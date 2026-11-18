@@ -164,10 +164,13 @@ $('#pastille-balance').addEventListener('click', () =>
 
 async function connecterBalance() {
   robot.suspendre(true);
+  $('#pastille-balance').classList.add('attente');
+  toast('Connexion de la balance… (jusqu\u2019à 1 min)');
   try {
     await balance.connecter();
   } finally {
     robot.suspendre(false);
+    $('#pastille-balance').classList.remove('attente');
   }
 }
 

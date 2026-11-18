@@ -112,12 +112,30 @@ export class Balance extends EventTarget {
       this.#tramesInconnues = 0;
       this.#premierePesee = true;
       mesures.addEventListener('characteristicvaluechanged', (e) => this.#recevoir(e.target.value));
+      if (essai > 1) {
+        // 2e essai : réveiller la balance par une commande avant de demander les notifications.
+        this.#journal(`balance → ${enHexa(commandeVersion(this.#type))} (avant notifications)`);
+        await this.#enFile(() => commandes.writeValueWithoutResponse(commandeVersion(this.#type)), 'commande');
+        await pause(500);
+      }
+      // Android peut mettre jusqu'à ~30 s avant de renvoyer une erreur : on lui laisse le temps de la donner.
+      const delai = essai === 1 ? 35000 : 15000;
+      this.#journal(`balance : activation des notifications (essai ${essai}, jusqu'à ${delai / 1000} s)…`);
+      const debut = Date.now();
       try {
-        await this.#enFile(() => mesures.startNotifications(), 'notifications', 6000);
+        await this.#enFile(() => mesures.startNotifications(), 'notifications', delai);
         notifications = true;
-        this.#journal('balance : notifications activées');
+        this.#journal(`balance : notifications activées en ${((Date.now() - debut) / 1000).toFixed(1)} s`);
       } catch (erreur) {
-        this.#journal(`✗ balance : notifications impossibles, essai ${essai} (${erreur.message})`);
+        this.#journal(
+          `✗ balance : notifications impossibles, essai ${essai}, après ${((Date.now() - debut) / 1000).toFixed(1)} s ` +
+            `(${erreur.name} : ${erreur.message})`,
+        );
+        if (this.grammes !== null) {
+          // Le poids arrive quand même : on s'en contente.
+          this.#journal('balance : des mesures arrivent malgré l\u2019erreur, on continue');
+          notifications = true;
+        }
         if (pm.read) {
           // Plan B : lire la valeur à intervalles réguliers.
           try {
