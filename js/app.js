@@ -157,9 +157,18 @@ $('#pastille-balance').addEventListener('click', () =>
       if (confirm('Déconnecter la balance ?')) balance.deconnecter();
       return;
     }
-    await balance.connecter();
+    await connecterBalance();
   }),
 );
+
+async function connecterBalance() {
+  robot.suspendre(true);
+  try {
+    await balance.connecter();
+  } finally {
+    robot.suspendre(false);
+  }
+}
 
 robot.addEventListener('connexion', () => {
   majPastilles();
@@ -675,7 +684,7 @@ function ouvrirGuide(recette) {
         toast('Bon appétit !');
       }
     } else if (a === 'tare') tenter(() => balance.tare());
-    else if (a === 'balance') tenter(async () => (await balance.connecter(), afficher()));
+    else if (a === 'balance') tenter(async () => (await connecterBalance(), afficher()));
     else if (a === 'robot') tenter(async () => (await robot.connecter(), afficher()));
     else if (a === 'envoyer') envoyer();
     else if (a === 'stop') tenter(() => (vibrer(80), robot.touche('stop')));

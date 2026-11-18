@@ -24,7 +24,13 @@ export class Robot extends EventTarget {
   #file = Promise.resolve();
   #minuteur = null;
   #echecs = 0;
+  #suspendu = false;
   etat = null;
+
+  /** Suspend la lecture régulière de l'état (pour laisser le Bluetooth à la balance pendant sa connexion). */
+  suspendre(oui) {
+    this.#suspendu = oui;
+  }
 
   static disponible() {
     return 'serial' in navigator;
@@ -192,6 +198,7 @@ export class Robot extends EventTarget {
   }
 
   async #sonder() {
+    if (this.#suspendu) return;
     try {
       await this.lireEtat();
       this.#echecs = 0;

@@ -35,6 +35,7 @@ export class Balance extends EventTarget {
   #premierePesee = true;
   #surveillance = null;
   #releve = null;
+  #ignorerDeconnexion = false;
   grammes = null;
   stable = false;
 
@@ -72,6 +73,7 @@ export class Balance extends EventTarget {
     const appareil = await navigator.bluetooth.requestDevice({ filters: [{ services: [SERVICE_BALANCE] }] });
     this.#appareil = appareil;
     appareil.addEventListener('gattserverdisconnected', () => {
+      if (this.#ignorerDeconnexion) return;
       clearTimeout(this.#surveillance);
       clearInterval(this.#releve);
       this.#commandes = null;
@@ -80,43 +82,56 @@ export class Balance extends EventTarget {
       this.#emettre('connexion', false);
     });
 
-    this.#journal('balance : connexion…');
-    const serveur = await this.#enFile(() => appareil.gatt.connect(), 'connexion');
-    // Android : laisser la connexion se stabiliser avant les premières opérations.
-    await pause(800);
-    const service = await this.#enFile(() => serveur.getPrimaryService(SERVICE_BALANCE), 'service');
-    const commandes = await this.#enFile(() => service.getCharacteristic(CARACTERISTIQUE_COMMANDES), 'commandes');
-    const mesures = await this.#enFile(() => service.getCharacteristic(CARACTERISTIQUE_MESURES), 'mesures');
-    const pm = mesures.properties;
-    const pc = commandes.properties;
-    this.#journal(
-      `balance : mesures notify=${pm.notify} indicate=${pm.indicate} read=${pm.read} · ` +
-        `commandes write=${pc.write} sansRéponse=${pc.writeWithoutResponse}`,
-    );
-    this.#tramesInconnues = 0;
-    this.#premierePesee = true;
-    mesures.addEventListener('characteristicvaluechanged', (e) => this.#recevoir(e.target.value));
-
+    let commandes = null;
     let notifications = false;
-    try {
-      await this.#enFile(() => mesures.startNotifications(), 'notifications', 6000);
-      notifications = true;
-      this.#journal('balance : notifications activées');
-    } catch (erreur) {
-      this.#journal(`✗ balance : notifications impossibles (${erreur.message})`);
+    for (let essai = 1; essai <= 2 && !notifications; essai++) {
+      if (essai > 1) {
+        // Nouvelle connexion GATT : Chrome oublie l'abonnement resté bloqué.
+        this.#journal('balance : nouvel essai après reconnexion…');
+        this.#ignorerDeconnexion = true;
+        appareil.gatt.disconnect();
+        this.#file = Promise.resolve();
+        await pause(1500);
+        this.#ignorerDeconnexion = false;
+      }
+      this.#journal('balance : connexion…');
+      const serveur = await this.#enFile(() => appareil.gatt.connect(), 'connexion');
+      // Android : laisser la connexion se stabiliser avant les premières opérations.
+      await pause(1000);
+      const service = await this.#enFile(() => serveur.getPrimaryService(SERVICE_BALANCE), 'service');
+      commandes = await this.#enFile(() => service.getCharacteristic(CARACTERISTIQUE_COMMANDES), 'commandes');
+      const mesures = await this.#enFile(() => service.getCharacteristic(CARACTERISTIQUE_MESURES), 'mesures');
+      const pm = mesures.properties;
+      if (essai === 1) {
+        const pc = commandes.properties;
+        this.#journal(
+          `balance : mesures notify=${pm.notify} indicate=${pm.indicate} read=${pm.read} · ` +
+            `commandes write=${pc.write} sansRéponse=${pc.writeWithoutResponse}`,
+        );
+      }
+      this.#tramesInconnues = 0;
+      this.#premierePesee = true;
+      mesures.addEventListener('characteristicvaluechanged', (e) => this.#recevoir(e.target.value));
+      try {
+        await this.#enFile(() => mesures.startNotifications(), 'notifications', 6000);
+        notifications = true;
+        this.#journal('balance : notifications activées');
+      } catch (erreur) {
+        this.#journal(`✗ balance : notifications impossibles, essai ${essai} (${erreur.message})`);
+        if (pm.read) {
+          // Plan B : lire la valeur à intervalles réguliers.
+          try {
+            await this.#lancerReleve(mesures);
+            notifications = true;
+          } catch (e2) {
+            this.#journal(`✗ balance : lecture impossible (${e2.message})`);
+          }
+        }
+      }
     }
     if (!notifications) {
-      // Plan B : lire la valeur à intervalles réguliers, si la balance le permet.
-      if (!pm.read) {
-        appareil.gatt.disconnect();
-        throw new Error('balance : ni notifications ni lecture possibles');
-      }
-      try {
-        await this.#lancerReleve(mesures);
-      } catch (erreur) {
-        appareil.gatt.disconnect();
-        throw new Error(`balance : lecture impossible aussi (${erreur.message})`);
-      }
+      appareil.gatt.disconnect();
+      throw new Error('La balance ne transmet pas son poids. Voir le journal.');
     }
 
     this.#commandes = commandes;
