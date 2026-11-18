@@ -1,5 +1,5 @@
 // Hors connexion : l'appli se sert du cache, puis le met à jour en arrière-plan (version suivante au prochain lancement).
-const CACHE = 'cookexpert-app-v2';
+const CACHE = 'cookexpert-app-v3';
 const FICHIERS = [
   './', 'index.html', 'css/style.css', 'manifest.webmanifest',
   'js/app.js', 'js/robot.js', 'js/balance.js', 'js/stockage.js',

@@ -320,7 +320,11 @@ $('#btn-unite').addEventListener('click', () =>
 
 let fermerEcranActuel = null;
 function ouvrirEcran(html, surFermeture) {
-  const el = $('#ecran');
+  // Élément neuf à chaque ouverture : les écouteurs de l'écran précédent disparaissent avec l'ancien.
+  // (Sinon ils s'accumulaient : étapes sautées en double, programmes et tares envoyés deux fois.)
+  const ancien = $('#ecran');
+  const el = ancien.cloneNode(false);
+  ancien.replaceWith(el);
   el.innerHTML = html;
   el.hidden = false;
   el.scrollTop = 0;
