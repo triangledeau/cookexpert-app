@@ -724,6 +724,16 @@ function majBoutonNotifs() {
     b.textContent = 'Notifications refusées (réglages Chrome)';
   }
 }
+$('#btn-copier-journal').addEventListener('click', async () => {
+  const texte = [`Cook Expert app · ${navigator.userAgent}`, ...lignesJournal].join('\n');
+  try {
+    await navigator.clipboard.writeText(texte);
+    toast('Journal copié');
+  } catch {
+    toast('Copie impossible');
+  }
+});
+
 $('#btn-notifs').addEventListener('click', async () => {
   await Notification.requestPermission();
   majBoutonNotifs();

@@ -15,10 +15,12 @@ import { enHexa } from '../lib/protocole.js';
 const DELAI_GATT_MS = 12000;
 const MAX_TRAMES_INCONNUES = 10;
 
-function avecDelai(promesse, quoi) {
+const pause = (ms) => new Promise((fin) => setTimeout(fin, ms));
+
+function avecDelai(promesse, quoi, delaiMs = DELAI_GATT_MS) {
   let minuteur;
   const delai = new Promise((_, rejeter) => {
-    minuteur = setTimeout(() => rejeter(new Error(`balance : pas de réponse (${quoi})`)), DELAI_GATT_MS);
+    minuteur = setTimeout(() => rejeter(new Error(`balance : pas de réponse (${quoi})`)), delaiMs);
   });
   return Promise.race([promesse, delai]).finally(() => clearTimeout(minuteur));
 }
@@ -32,6 +34,7 @@ export class Balance extends EventTarget {
   #tramesInconnues = 0;
   #premierePesee = true;
   #surveillance = null;
+  #releve = null;
   grammes = null;
   stable = false;
 
@@ -52,8 +55,8 @@ export class Balance extends EventTarget {
   }
 
   // Une seule opération GATT à la fois.
-  #enFile(action, quoi) {
-    const suite = this.#file.then(() => avecDelai(action(), quoi));
+  #enFile(action, quoi, delaiMs) {
+    const suite = this.#file.then(() => avecDelai(action(), quoi, delaiMs));
     this.#file = suite.catch(() => {});
     return suite;
   }
@@ -70,6 +73,7 @@ export class Balance extends EventTarget {
     this.#appareil = appareil;
     appareil.addEventListener('gattserverdisconnected', () => {
       clearTimeout(this.#surveillance);
+      clearInterval(this.#releve);
       this.#commandes = null;
       this.grammes = null;
       this.#journal('balance déconnectée');
@@ -78,15 +82,43 @@ export class Balance extends EventTarget {
 
     this.#journal('balance : connexion…');
     const serveur = await this.#enFile(() => appareil.gatt.connect(), 'connexion');
+    // Android : laisser la connexion se stabiliser avant les premières opérations.
+    await pause(800);
     const service = await this.#enFile(() => serveur.getPrimaryService(SERVICE_BALANCE), 'service');
     const commandes = await this.#enFile(() => service.getCharacteristic(CARACTERISTIQUE_COMMANDES), 'commandes');
     const mesures = await this.#enFile(() => service.getCharacteristic(CARACTERISTIQUE_MESURES), 'mesures');
-    mesures.addEventListener('characteristicvaluechanged', (e) => this.#recevoir(e.target.value));
-    await this.#enFile(() => mesures.startNotifications(), 'notifications');
-    this.#journal('balance : notifications activées');
-
+    const pm = mesures.properties;
+    const pc = commandes.properties;
+    this.#journal(
+      `balance : mesures notify=${pm.notify} indicate=${pm.indicate} read=${pm.read} · ` +
+        `commandes write=${pc.write} sansRéponse=${pc.writeWithoutResponse}`,
+    );
     this.#tramesInconnues = 0;
     this.#premierePesee = true;
+    mesures.addEventListener('characteristicvaluechanged', (e) => this.#recevoir(e.target.value));
+
+    let notifications = false;
+    try {
+      await this.#enFile(() => mesures.startNotifications(), 'notifications', 6000);
+      notifications = true;
+      this.#journal('balance : notifications activées');
+    } catch (erreur) {
+      this.#journal(`✗ balance : notifications impossibles (${erreur.message})`);
+    }
+    if (!notifications) {
+      // Plan B : lire la valeur à intervalles réguliers, si la balance le permet.
+      if (!pm.read) {
+        appareil.gatt.disconnect();
+        throw new Error('balance : ni notifications ni lecture possibles');
+      }
+      try {
+        await this.#lancerReleve(mesures);
+      } catch (erreur) {
+        appareil.gatt.disconnect();
+        throw new Error(`balance : lecture impossible aussi (${erreur.message})`);
+      }
+    }
+
     this.#commandes = commandes;
     await this.#ecrire(commandeVersion(this.#type));
     this.#journal('balance connectée');
@@ -99,6 +131,23 @@ export class Balance extends EventTarget {
         this.#journal('✗ balance : aucune mesure reçue (balance allumée ? pose un objet dessus)');
       }
     }, 5000);
+  }
+
+  async #lancerReleve(mesures) {
+    // Une première lecture doit réussir, sinon on abandonne.
+    const vue = await this.#enFile(() => mesures.readValue(), 'lecture', 4000);
+    this.#journal('balance : mode relevé (lecture toutes les 0,4 s)');
+    this.#recevoir(vue);
+    let enCours = false;
+    clearInterval(this.#releve);
+    this.#releve = setInterval(async () => {
+      if (enCours || !this.connectee) return;
+      enCours = true;
+      try {
+        this.#recevoir(await this.#enFile(() => mesures.readValue(), 'lecture', 3000));
+      } catch {}
+      enCours = false;
+    }, 400);
   }
 
   #recevoir(vue) {
