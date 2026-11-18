@@ -28,6 +28,6 @@ L'appli **ne démarre jamais le moteur ni la chauffe** : elle règle le programm
 - Robot : Bluetooth classique (SPP) via **Web Serial**. Balance : BLE via **Web Bluetooth**. Les deux exigent HTTPS et Chrome.
 - Aucun build : HTML, CSS et modules JavaScript servis tels quels par GitHub Pages.
 - `lib/` est généré à partir de [cookexpert-bt](https://github.com/Julien-Deudon/cookexpert-bt) (licence MIT, © Julien Deudon), qui décrit le protocole. Pour le mettre à jour : `node scripts/maj-bibliotheque.mjs <clone de cookexpert-bt> <esbuild>`.
-- Après une modification, changer `CACHE` dans `sw.js` pour que les téléphones récupèrent la nouvelle version.
+- Après une modification, changer `CACHE` dans `sw.js` et `VERSION` dans `js/version.js` pour que les téléphones récupèrent la nouvelle version.
 
 Projet indépendant, sans lien avec Magimix.

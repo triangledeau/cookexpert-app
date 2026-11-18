@@ -4,6 +4,7 @@ import { formaterPoids, uniteSuivante, nomUnite } from '../lib/balance.js';
 import { Robot } from './robot.js';
 import { Balance } from './balance.js';
 import * as stock from './stockage.js';
+import { VERSION } from './version.js';
 
 const $ = (sel, racine = document) => racine.querySelector(sel);
 const $$ = (sel, racine = document) => [...racine.querySelectorAll(sel)];
@@ -734,7 +735,7 @@ function majBoutonNotifs() {
   }
 }
 $('#btn-copier-journal').addEventListener('click', async () => {
-  const texte = [`Cook Expert app · ${navigator.userAgent}`, ...lignesJournal].join('\n');
+  const texte = [`Cook Expert app v${VERSION} · ${navigator.userAgent}`, ...lignesJournal].join('\n');
   try {
     await navigator.clipboard.writeText(texte);
     toast('Journal copié');
@@ -762,4 +763,15 @@ rendreFavoris();
 rendreRecettes();
 robot.reconnecter().catch(() => {});
 
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+$('#version').textContent = `Version ${VERSION}`;
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});
+  // Nouvelle version installée : on recharge une fois pour l'utiliser tout de suite.
+  let recharge = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (recharge || !navigator.serviceWorker.controller) return;
+    recharge = true;
+    if ($('#ecran').hidden) location.reload();
+  });
+}
