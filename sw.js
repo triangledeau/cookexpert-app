@@ -1,5 +1,5 @@
 // Réseau d'abord : en ligne, on sert toujours la dernière version publiée ; hors ligne, le cache prend le relais.
-const CACHE = 'cookexpert-app-v7';
+const CACHE = 'cookexpert-app-v8';
 const FICHIERS = [
   './', 'index.html', 'css/style.css', 'manifest.webmanifest',
   'js/app.js', 'js/robot.js', 'js/balance.js', 'js/stockage.js', 'js/version.js',

@@ -118,8 +118,8 @@ export class Balance extends EventTarget {
         await this.#enFile(() => commandes.writeValueWithoutResponse(commandeVersion(this.#type)), 'commande');
         await pause(500);
       }
-      // Android peut mettre jusqu'à ~30 s avant de renvoyer une erreur : on lui laisse le temps de la donner.
-      const delai = essai === 1 ? 35000 : 15000;
+      // Quand ça marche, c'est immédiat ; un blocage vient en général de l'appli Magimix restée connectée.
+      const delai = 8000;
       this.#journal(`balance : activation des notifications (essai ${essai}, jusqu'à ${delai / 1000} s)…`);
       const debut = Date.now();
       try {
@@ -149,7 +149,9 @@ export class Balance extends EventTarget {
     }
     if (!notifications) {
       appareil.gatt.disconnect();
-      throw new Error('La balance ne transmet pas son poids. Voir le journal.');
+      throw new Error(
+        'La balance ne répond pas. Force l\u2019arrêt de l\u2019appli Magimix (Paramètres › Applications), éteins et rallume la balance, puis réessaie.',
+      );
     }
 
     this.#commandes = commandes;
